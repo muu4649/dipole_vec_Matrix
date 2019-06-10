@@ -1,0 +1,593 @@
+import numpy as np
+import pandas as pd
+import copy #for deepcopy
+import csv #for input to csvfile
+import glob
+import os
+import math
+
+DATA_DIR="../../BOB/job-tzvp-ran10"
+files =sorted(glob.glob(os.path.join(DATA_DIR,'*.inp')))
+
+def checkdE(Z):
+   if Z==1:
+       return 2.1
+   elif Z==2:
+       return 1.0
+   elif Z==3:
+       return 1.5
+   elif Z==4:
+       return 2.0
+   elif Z==5:
+       return 2.5
+   elif Z==6:
+       return 3.0
+   elif Z==7:
+       return 3.5
+   elif Z==8:
+       return 4.0
+   elif Z==9:
+       return 0.9
+   elif Z==10:
+       return 1.2
+   elif Z==11:
+       return 1.5
+   elif Z==12:
+       return 1.8
+   elif Z==13:
+       return 2.1
+   elif Z==14:
+       return 2.5   
+   elif Z==15:
+       return 3.0
+   elif Z==35:
+       return 2.8 
+   elif Z==53:
+       return 2.5
+
+def checkBond(Z1,Z2,R1,R2):#CH  CN CO CF NH OH
+   bond=abs(np.linalg.norm(R[i]-R[j]))
+   if (Z1==6 and Z2==7)or(Z1==7 and Z2==6):
+      if bond <=1.50:#1.46
+          return True
+      else:
+          return False
+   
+   if (Z1==6 and Z2==8)or(Z1==8 and Z2==6):
+      if bond <=1.40:#1.38
+          return True
+      elif bond<=1.30:#1.24
+          return True
+      else:
+          return False
+   
+   if (Z1==6 and Z2==9)or(Z1==9 and Z2==6):
+      if bond <=1.4:#1.39
+          return True
+      else:
+          return False
+   
+   if (Z1==1 and Z2==7)or(Z1==7 and Z2==1):
+      if bond <=1.03:
+          return True
+      else:
+          return False
+   
+   if (Z1==1 and Z2==6)or(Z1==6 and Z2==1):
+      if bond <=1.07:
+          return True
+      else:
+          return False
+   
+   if (Z1==1 and Z2==8)or(Z1==8 and Z2==1):
+      if bond <=0.10:#0.95
+          return True
+      else:
+          return False
+   elif Z1==Z2:
+      return False
+   
+   else:
+      return False    
+
+for file in files:
+   data=np.genfromtxt(file, dtype = "float", delimiter ='' )
+   maxlen=29 
+
+   Z=data[:,0]#atom number
+   R=data[:,1:4]#cartesian cordinate
+   len=R.shape[0]#array length
+   print("Start",file)
+   print('array length',len)
+   
+   M=np.zeros([len,len])
+   Mx=np.zeros([len,len])
+   My=np.zeros([len,len])
+   Mz=np.zeros([len,len])
+   nor=np.zeros([len])
+
+   CM=np.zeros(0)
+   CMxzero=np.zeros([maxlen,maxlen])
+   CMyzero=np.zeros([maxlen,maxlen])
+   CMzzero=np.zeros([maxlen,maxlen])
+   
+   for i in range(0,len):#coulmb matrix calc
+      for j in range(0,len):
+         if i==j:
+            M[i,j]=0
+            Mx[i,j]=checkdE(Z[i])
+            My[i,j]=checkdE(Z[i])
+            Mz[i,j]=checkdE(Z[i])
+            """
+            Mx[i,j]=0.5*pow(Z[i],2.4)
+            My[i,j]=0.5*pow(Z[i],2.4)
+            Mz[i,j]=0.5*pow(Z[i],2.4)
+            """
+         elif i!=j:
+            if checkBond(Z[i],Z[j],R[i],R[j])==True:#結合関係ならば
+               E1=checkdE(Z[i])
+               E2=checkdE(Z[j])
+               if E1<E2:#双極子モーメントのベクトル方向
+                  dE=abs(E1-E2)
+                  M[i,j]=abs(np.linalg.norm(R[i]-R[j]))
+                  Mx[i,j]=dE*(R[i,0]-R[j,0])
+                  My[i,j]=dE*(R[i,1]-R[j,1])
+                  Mz[i,j]=dE*(R[i,2]-R[j,2])
+
+               elif E1>E2:
+                  dE=abs(E2-E1)
+                  M[i,j]=abs(np.linalg.norm(R[i]-R[j]))
+                  Mx[i,j]=dE*(R[j,0]-R[i,0])
+                  My[i,j]=dE*(R[j,1]-R[i,1])
+                  Mz[i,j]=dE*(R[j,2]-R[i,2])
+            elif checkBond(Z[i],Z[j],R[i],R[j])==False:#結合関係ではないならば
+               M[i,j]=abs(np.linalg.norm(R[i]-R[j]))
+               Mx[i,j]=0
+               My[i,j]=0
+               Mz[i,j]=0
+
+
+   for i in range(0,len):#norm per index 
+      for j in range(0,len):
+         nor[i]+=M[i,j]
+
+   for index in range(len-1):# bubble sort
+      for low in range(len-1,index,-1):
+         if(nor[low]>nor[low-1]):
+            tmp=nor[low-1]
+            nor[low-1]=nor[low]
+            nor[low]=tmp
+         
+            tmp1=copy.deepcopy(Mx[low-1,:])
+            Mx[low-1,:]=copy.deepcopy(Mx[low,:])
+            Mx[low,:]=copy.deepcopy(tmp1) 
+            tmp1=copy.deepcopy(Mx[:,low-1])
+            Mx[:,low-1]=copy.deepcopy(Mx[:,low])
+            Mx[:,low]=copy.deepcopy(tmp1)
+
+            tmp1=copy.deepcopy(My[low-1,:])
+            My[low-1,:]=copy.deepcopy(My[low,:])
+            My[low,:]=copy.deepcopy(tmp1) 
+            tmp1=copy.deepcopy(My[:,low-1])
+            My[:,low-1]=copy.deepcopy(My[:,low])
+            My[:,low]=copy.deepcopy(tmp1)
+
+            tmp1=copy.deepcopy(Mz[low-1,:])
+            Mz[low-1,:]=copy.deepcopy(Mz[low,:])
+            Mz[low,:]=copy.deepcopy(tmp1) 
+            tmp1=copy.deepcopy(Mz[:,low-1])
+            Mz[:,low-1]=copy.deepcopy(Mz[:,low])
+            Mz[:,low]=copy.deepcopy(tmp1)
+
+   for i in range(0,len):
+      for j in range(0,len):
+         CMxzero[i,j]=Mx[i,j]
+         CMyzero[i,j]=My[i,j]
+         CMzzero[i,j]=Mz[i,j]
+   CMxz=np.triu(CMxzero)#upper triangle matrix
+   CMyz=np.triu(CMyzero)#upper triangle matrix
+   CMzz=np.triu(CMzzero)#upper triangle matrix
+   
+   for i in  range(0,maxlen):
+      for j in range(i,maxlen):  
+         CM=np.append(CM,CMxz[i,j])
+
+   for i in  range(0,maxlen):
+      for j in range(i,maxlen):  
+         CM=np.append(CM,CMyz[i,j])
+
+
+   for i in  range(0,maxlen):
+      for j in range(i,maxlen):  
+         CM=np.append(CM,CMzz[i,j])
+
+
+
+   CM=np.array([CM])
+   df=pd.DataFrame(CM)
+   df.to_csv("CMQM9_0610.csv",mode='a',index=False,header=False)
+   print("End",file)
+print("Conver to CM FIN!")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
